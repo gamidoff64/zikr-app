@@ -1,29 +1,52 @@
 name: Build APK
 
+# Взят с официального CI kivy/buildozer (.github/workflows/android.yml)
+# Это то что сами разработчики buildozer используют для тестирования
+
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+# Ключевой env: отключает ВСЕ интерактивные вопросы python-for-android,
+# включая принятие лицензий SDK. Именно это решает "license not accepted".
+env:
+  PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
+
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # digreatbrian/buildozer-action@v2 — composite action (не Docker).
-      # Сам устанавливает Java 17, системные зависимости, Cython 0.29.33, buildozer.
-      # python-version: 3.8 — наиболее совместимая версия с Kivy/python-for-android.
-      - name: Build APK
-        uses: digreatbrian/buildozer-action@v2
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
-          buildozer-cmd: buildozer -v android debug
+          python-version: '3.x'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # Минимальный набор — только то что нужно p4a на Linux,
+      # но не устанавливается автоматически (из официального CI kivy)
+      - name: Install Linux dependencies
+        run: |
+          sudo apt update
+          sudo apt -y install automake libltdl-dev
+
+      - name: Install Buildozer
+        run: pip install buildozer
+
+      - name: Build APK
+        run: buildozer android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: zikr-app-debug
-          path: ./bin/*.apk
+          path: bin/*.apk
           retention-days: 30

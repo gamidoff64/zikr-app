@@ -43,8 +43,12 @@ android.api = 34
 # NDK версия (Buildozer скачает автоматически)
 android.ndk = 25b
 
-# Автоматически принимать лицензии Android SDK при локальной сборке.
+# Автоматически принимать лицензии Android SDK.
 android.accept_sdk_license = True
+
+# develop — актуальная ветка python-for-android.
+# Официальный CI kivy/buildozer использует именно её.
+p4a.branch = develop
 
 # Права приложения
 # VIBRATE — для вибрации при нажатии
