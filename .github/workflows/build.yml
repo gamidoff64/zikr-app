@@ -2,46 +2,28 @@ name: Build APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
-    # ArtemSBulgakov/buildozer-action требует ubuntu-latest
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # Кэш глобальной папки buildozer — Android NDK и SDK весят несколько ГБ.
-      # Ключ по хэшу buildozer.spec: если конфиг не менялся, кэш переиспользуется.
-      - name: Cache buildozer global directory
-        uses: actions/cache@v4
+      # digreatbrian/buildozer-action@v2 — composite action (не Docker).
+      # Сам устанавливает Java 17, системные зависимости, Cython 0.29.33, buildozer.
+      # python-version: 3.8 — наиболее совместимая версия с Kivy/python-for-android.
+      - name: Build APK
+        uses: digreatbrian/buildozer-action@v2
         with:
-          path: .buildozer_global
-          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+          python-version: '3.8'
+          buildozer-cmd: buildozer -v android debug
 
-      # Ключевой шаг: buildozer запускается ВНУТРИ официального Docker-образа
-      # kivy/buildozer. В нём уже есть:
-      #   - Android SDK с принятыми лицензиями
-      #   - Android NDK
-      #   - build-tools нужной версии
-      #   - Java, Cython, python-for-android
-      # Именно поэтому не нужно setup-android, sdkmanager, принятие лицензий вручную.
-      - name: Build APK with Buildozer (Docker)
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          command: buildozer android debug
-          # stable = последний стабильный релиз buildozer из PyPI
-          buildozer_version: stable
-
-      # APK сохраняем как artifact — скачать со страницы Actions кнопкой Download
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: zikr-app-debug
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: ./bin/*.apk
           retention-days: 30
