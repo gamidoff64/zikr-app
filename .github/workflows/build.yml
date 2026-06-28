@@ -8,84 +8,40 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # ArtemSBulgakov/buildozer-action требует ubuntu-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      # Самый надёжный способ принять лицензии — записать хэши файлов вручную.
-      # sdkmanager иногда зависает или отказывает на CI, а файлы работают всегда.
-      # Хэши официальные, не меняются годами (это не секреты, это публичные чексуммы).
-      - name: Accept Android SDK licenses (write hash files directly)
-        run: |
-          mkdir -p "$ANDROID_HOME/licenses"
-          # android-sdk-license — основная лицензия SDK и build-tools
-          printf "24333f8a63b6825ea9c5514f83c2829b004d1fee\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e" \
-            > "$ANDROID_HOME/licenses/android-sdk-license"
-          # android-sdk-preview-license — для preview/rc версий build-tools
-          printf "84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910" \
-            > "$ANDROID_HOME/licenses/android-sdk-preview-license"
-          # intel-android-extra-license — для Intel HAXM (эмулятор, но иногда требуется)
-          printf "33b6937cf7e80601f9f3e9f9ca5a41f5e75e9f12" \
-            > "$ANDROID_HOME/licenses/intel-android-extra-license"
-          echo "✅ Лицензии записаны:"
-          ls -la "$ANDROID_HOME/licenses/"
-
-      # Ставим build-tools 34.0.0 явно — до запуска buildozer
-      - name: Install build-tools 34.0.0
-        run: |
-          sdkmanager "build-tools;34.0.0" "platforms;android-34" 2>&1 | tail -5
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            git zip unzip \
-            python3-pip python3-setuptools \
-            autoconf automake libtool \
-            libffi-dev libssl-dev \
-            libsqlite3-dev \
-            pkg-config zlib1g-dev \
-            libncurses5-dev libncursesw5-dev \
-            cmake ccache
-
-      - name: Install Buildozer and Cython
-        run: |
-          pip3 install --upgrade pip
-          pip3 install buildozer
-          pip3 install "cython==0.29.37"
-
-      - name: Cache buildozer directory
+      # Кэш глобальной папки buildozer — Android NDK и SDK весят несколько ГБ.
+      # Ключ по хэшу buildozer.spec: если конфиг не менялся, кэш переиспользуется.
+      - name: Cache buildozer global directory
         uses: actions/cache@v4
         with:
-          path: .buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-${{ runner.os }}-
+          path: .buildozer_global
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
 
-      - name: Build APK
-        run: buildozer android debug
-        env:
-          # Путь к SDK, который setup-android уже установил
-          ANDROIDSDK: ${{ env.ANDROID_HOME }}
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
-          # Дублируем принятие лицензий через env — buildozer читает это тоже
-          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
-          BUILDOZER_WARN_ON_ROOT: "false"
+      # Ключевой шаг: buildozer запускается ВНУТРИ официального Docker-образа
+      # kivy/buildozer. В нём уже есть:
+      #   - Android SDK с принятыми лицензиями
+      #   - Android NDK
+      #   - build-tools нужной версии
+      #   - Java, Cython, python-for-android
+      # Именно поэтому не нужно setup-android, sdkmanager, принятие лицензий вручную.
+      - name: Build APK with Buildozer (Docker)
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          # stable = последний стабильный релиз buildozer из PyPI
+          buildozer_version: stable
 
+      # APK сохраняем как artifact — скачать со страницы Actions кнопкой Download
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: zikr-app-debug
-          path: bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
           retention-days: 30

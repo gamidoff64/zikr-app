@@ -43,11 +43,7 @@ android.api = 34
 # NDK версия (Buildozer скачает автоматически)
 android.ndk = 25b
 
-# Фиксируем версию build-tools.
-android.build_tools_version = 34.0.0
-
-# Автоматически принимать лицензии Android SDK.
-# Это встроенный параметр buildozer — без него CI падает на "license not accepted".
+# Автоматически принимать лицензии Android SDK при локальной сборке.
 android.accept_sdk_license = True
 
 # Права приложения
