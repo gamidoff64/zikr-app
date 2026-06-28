@@ -1,15 +1,10 @@
 name: Build APK
 
-# Взят с официального CI kivy/buildozer (.github/workflows/android.yml)
-# Это то что сами разработчики buildozer используют для тестирования
-
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
-# Ключевой env: отключает ВСЕ интерактивные вопросы python-for-android,
-# включая принятие лицензий SDK. Именно это решает "license not accepted".
 env:
   PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
 
@@ -31,17 +26,72 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Минимальный набор — только то что нужно p4a на Linux,
-      # но не устанавливается автоматически (из официального CI kivy)
-      - name: Install Linux dependencies
+      - name: Install system dependencies and aidl
         run: |
-          sudo apt update
-          sudo apt -y install automake libltdl-dev
+          sudo apt-get update
+          sudo apt-get install -y automake libltdl-dev build-essential libstdc++6
+          # Пробуем поставить системный aidl разными путями
+          sudo apt-get install -y aidl || true
+          sudo apt-get install -y android-sdk-build-tools || true
+          echo "aidl location: $(which aidl 2>/dev/null || echo 'not found in PATH')"
+          find /usr -name aidl -type f 2>/dev/null | head -5 || true
 
       - name: Install Buildozer
         run: pip install buildozer
 
-      - name: Build APK
+      # Шаг 1: Первый запуск — buildozer скачивает SDK/NDK, падает на aidl — это ок
+      - name: First run — download SDK (expected to fail on aidl)
+        run: buildozer android debug || true
+
+      # Шаг 2: Найти aidl и подсунуть в папку build-tools, которую ждёт buildozer
+      - name: Patch aidl into buildozer SDK
+        run: |
+          echo "=== Ищем build-tools в ~/.buildozer ==="
+          find ~/.buildozer -name "build-tools" -type d 2>/dev/null || echo "build-tools dir not found yet"
+          BT_DIR=$(find ~/.buildozer/android/platform -name "build-tools" -type d 2>/dev/null | head -1)
+          echo "build-tools dir: $BT_DIR"
+
+          if [ -n "$BT_DIR" ]; then
+            ls "$BT_DIR" || true
+          fi
+
+          # Ищем aidl — сначала в системе, потом в SDK
+          AIDL=$(which aidl 2>/dev/null \
+            || find /usr -name aidl -type f 2>/dev/null | head -1 \
+            || find ~/.buildozer -name aidl -type f 2>/dev/null | head -1)
+          echo "Found aidl: $AIDL"
+
+          if [ -z "$AIDL" ]; then
+            echo "aidl не найден нигде — скачиваем build-tools через sdkmanager"
+            SDK_DIR=$(find ~/.buildozer/android/platform -maxdepth 1 -name "android-sdk*" -type d 2>/dev/null | head -1)
+            echo "SDK dir: $SDK_DIR"
+            if [ -n "$SDK_DIR" ]; then
+              yes | "$SDK_DIR/tools/bin/sdkmanager" "build-tools;34.0.0" || true
+              yes | "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "build-tools;34.0.0" || true
+              AIDL=$(find "$SDK_DIR" -name aidl -type f 2>/dev/null | head -1)
+              echo "aidl после sdkmanager: $AIDL"
+            fi
+          fi
+
+          if [ -n "$AIDL" ] && [ -n "$BT_DIR" ]; then
+            # Кладём aidl в ВСЕ папки build-tools (buildozer ищет в конкретной версии)
+            for VER_DIR in "$BT_DIR"/*/; do
+              echo "Linking aidl → $VER_DIR"
+              ln -sf "$AIDL" "$VER_DIR/aidl" || true
+            done
+            # На случай если папки с версией нет — создаём fallback
+            mkdir -p "$BT_DIR/36.0.0"
+            ln -sf "$AIDL" "$BT_DIR/36.0.0/aidl" || true
+            mkdir -p "$BT_DIR/37.0.0"
+            ln -sf "$AIDL" "$BT_DIR/37.0.0/aidl" || true
+            echo "=== Итог ==="
+            find "$BT_DIR" -name aidl 2>/dev/null
+          else
+            echo "WARN: не смогли найти aidl или build-tools dir"
+          fi
+
+      # Шаг 3: Настоящая сборка
+      - name: Build APK (final)
         run: buildozer android debug
 
       - name: Upload APK artifact
