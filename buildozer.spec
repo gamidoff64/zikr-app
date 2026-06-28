@@ -46,6 +46,9 @@ android.ndk = 25b
 # Автоматически принимать лицензии Android SDK.
 android.accept_sdk_license = True
 
+# Стабильная ветка p4a — не форсит новые build-tools
+p4a.branch = master
+
 # Права приложения
 # VIBRATE — для вибрации при нажатии
 # INTERNET не нужен (работаем офлайн)
