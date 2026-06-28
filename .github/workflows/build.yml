@@ -1,0 +1,81 @@
+name: Build APK
+
+# Запускаем сборку при каждом пуше в ветку main
+on:
+  push:
+    branches:
+      - main
+  # Или вручную — кнопка "Run workflow" на странице Actions
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04  # LTS версия, самая стабильная для buildozer
+
+    steps:
+      # 1. Скачиваем код репозитория на машину GitHub
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Ставим Java 17 — нужна для Android SDK/toolchain
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 3. Системные зависимости Ubuntu для сборки Android
+      #    Buildozer компилирует C-расширения (Kivy, SDL2) — нужны dev-инструменты
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            git zip unzip \
+            python3-pip python3-setuptools \
+            autoconf automake libtool \
+            libffi-dev libssl-dev \
+            libsqlite3-dev \
+            pkg-config \
+            zlib1g-dev \
+            libncurses5-dev libncursesw5-dev \
+            cmake \
+            ccache
+
+      # 4. Ставим Buildozer и Cython.
+      #    Cython 0.29.x — проверенная версия для Kivy 2.x.
+      #    Cython 3.x иногда ломает совместимость.
+      - name: Install Buildozer and Cython
+        run: |
+          pip3 install --upgrade pip
+          pip3 install buildozer
+          pip3 install "cython==0.29.37"
+
+      # 5. Кэшируем .buildozer — там лежат Android SDK, NDK, скомпилированные пакеты.
+      #    Без кэша каждая сборка качает ~3 ГБ и занимает 30+ минут.
+      #    С кэшем повторные сборки — ~5–10 минут.
+      - name: Cache buildozer dependencies
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-${{ runner.os }}-
+
+      # 6. Собираем APK!
+      #    "android debug" = debug-сборка (не нужна подпись, можно сразу ставить на телефон)
+      - name: Build APK
+        run: |
+          buildozer android debug
+        env:
+          # Разрешаем buildozer работать без интерактивного терминала
+          BUILDOZER_WARN_ON_ROOT: "false"
+
+      # 7. Сохраняем APK как artifact — появится кнопка "Download" на странице Actions
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zikr-app-debug
+          # APK лежит в bin/ после сборки, имя генерируется buildozer автоматически
+          path: bin/*.apk
+          # Храним 30 дней (потом GitHub удаляет)
+          retention-days: 30
