@@ -37,18 +37,14 @@ log_level = 2
 # Минимальная версия Android (API 21 = Android 5.0)
 android.minapi = 21
 
-# Целевая версия Android для Google Play
-android.api = 34
+# API 33 — стабильная версия, совместима с build-tools 33.0.2
+android.api = 33
 
-# NDK версия (Buildozer скачает автоматически)
+# NDK 25b — проверенная версия для Kivy 2.x
 android.ndk = 25b
 
 # Автоматически принимать лицензии Android SDK.
 android.accept_sdk_license = True
-
-# develop — актуальная ветка python-for-android.
-# Официальный CI kivy/buildozer использует именно её.
-p4a.branch = develop
 
 # Права приложения
 # VIBRATE — для вибрации при нажатии
