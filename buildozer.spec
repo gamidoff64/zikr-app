@@ -43,6 +43,11 @@ android.api = 34
 # NDK версия (Buildozer скачает автоматически)
 android.ndk = 25b
 
+# Фиксируем версию build-tools.
+# 34.0.0 — стабильная, лицензия принимается без проблем.
+# 37 — слишком новая, на CI падает с "license not accepted".
+android.build_tools_version = 34.0.0
+
 # Права приложения
 # VIBRATE — для вибрации при нажатии
 # INTERNET не нужен (работаем офлайн)
