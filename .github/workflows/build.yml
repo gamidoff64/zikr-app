@@ -1,103 +1,21 @@
 name: Build APK
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-env:
-  PYTHONFORANDROID_PREREQUISITES_INSTALL_INTERACTIVE: 0
+on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python 3.10
-        uses: actions/setup-python@v5
+      - name: Build APK
+        uses: digreatbrian/buildozer-action@v2
         with:
-          python-version: '3.10'
+          python-version: 3.10
+          buildozer-cmd: buildozer -v android debug
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y automake libltdl-dev build-essential
-          # Системный aidl — если найдётся, используем как запасной
-          sudo apt-get install -y aidl || true
-
-      # УДАР 1: старый buildozer + старый cython
-      - name: Install Buildozer 1.5.0 + Cython 0.29.33
-        run: pip install "buildozer==1.5.0" "cython==0.29.33"
-
-      # Первый запуск: buildozer скачивает SDK/NDK и падает на лицензии/aidl — ОК
-      - name: First run — let buildozer download SDK (will fail, that is expected)
-        run: buildozer android debug || true
-
-      # УДАР 2: принимаем лицензии через РОДНОЙ sdkmanager buildozer-а
-      # и устанавливаем build-tools той версии которую он хочет (37 или любую другую)
-      - name: Accept licenses + install build-tools via buildozer's own sdkmanager
-        run: |
-          # Находим sdkmanager который скачал buildozer
-          SDKM=$(find ~/.buildozer -name sdkmanager -type f 2>/dev/null | head -1)
-          echo "sdkmanager: $SDKM"
-
-          if [ -z "$SDKM" ]; then
-            echo "sdkmanager не найден — buildozer ещё не скачал SDK"
-            exit 1
-          fi
-
-          # Принимаем ВСЕ лицензии через этот sdkmanager
-          yes | "$SDKM" --licenses || true
-
-          # Узнаём какую версию build-tools хочет buildozer (смотрим что уже в SDK)
-          SDK_DIR=$(dirname "$(dirname "$(dirname "$SDKM")")")
-          echo "SDK dir: $SDK_DIR"
-          echo "=== build-tools в SDK ==="
-          ls "$SDK_DIR/build-tools/" 2>/dev/null || echo "(пусто)"
-
-          # Устанавливаем 37.0.0 явно, раз он её хочет
-          yes | "$SDKM" "build-tools;37.0.0" || true
-          # Запасной вариант — 33.0.2
-          yes | "$SDKM" "build-tools;33.0.2" || true
-
-          echo "=== build-tools после установки ==="
-          ls "$SDK_DIR/build-tools/" 2>/dev/null
-
-          # Ищем aidl — в только что скачанных build-tools или в системе
-          AIDL=$(find "$SDK_DIR/build-tools" -name aidl -type f 2>/dev/null | head -1 \
-              || find /usr -name aidl -type f 2>/dev/null | head -1 \
-              || which aidl 2>/dev/null)
-          echo "aidl: $AIDL"
-
-          # Если aidl нашёлся — кладём его во все папки build-tools
-          if [ -n "$AIDL" ]; then
-            for VER_DIR in "$SDK_DIR/build-tools"/*/; do
-              if [ ! -f "$VER_DIR/aidl" ]; then
-                echo "Linking aidl → $VER_DIR"
-                ln -sf "$AIDL" "$VER_DIR/aidl" || true
-              fi
-            done
-          fi
-
-          # Итоговая проверка
-          echo "=== aidl в build-tools ==="
-          find "$SDK_DIR/build-tools" -name aidl 2>/dev/null || echo "не найден"
-
-      # Финальная сборка — SDK уже скачан, лицензии приняты, aidl на месте
-      - name: Build APK (final)
-        run: buildozer android debug
-
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: zikr-app-debug
-          path: bin/*.apk
-          retention-days: 30
+          name: zikr-apk
+          path: ./bin/*.apk
